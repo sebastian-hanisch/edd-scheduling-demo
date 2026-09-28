@@ -1,6 +1,6 @@
 # EDD – eine Warteschlange, die die schlimmste Verspätung klein hält – Streamlit-Demo
 
-**[→ Demo live ausprobieren](#) (Deploy offen)**
+**[→ Demo live ausprobieren](https://sebastianhanisch-edd-scheduling-demo.streamlit.app/)**
 
 Zweites Stück der **Klassische-Scheduling-Theorie-Linie** der "Konzepte"-Reihe für die Website "Sebastian Hanisch
 – Operations Research und Machine Learning": $n$ Aufträge mit Bearbeitungszeit $p_j$ und Fälligkeit $d_j$ auf
