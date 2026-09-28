@@ -13,7 +13,7 @@ import streamlit as st
 
 import edd_constants as C
 from edd_evaluation import Settings, SWEEP_LABELS, analyse, instance, optimality_check, run_config, shift_gap, shift_gap_sweep, sweep, timing_sweep
-from edd_presets import apply_preset, bounds, init_session_state_defaults, load_permalink_settings, randomize_chain_seed, randomize_seed, sync_query_params
+from edd_presets import KEPT, apply_preset, bounds, init_session_state_defaults, load_permalink_settings, randomize_chain_seed, randomize_seed, seed_widget, sync_query_params
 from edd_visualization import build_completion_vs_due, build_schedule, build_shift_gap, build_sweep, build_timing
 
 st.set_page_config(page_title="EDD-Scheduling – Sebastian Hanisch", layout="wide")
@@ -95,10 +95,12 @@ with st.sidebar:
     vehicle = st.radio("Vehikel", list(C.VEHICLE_LABELS), key="vehicle_radio", format_func=lambda k: C.VEHICLE_LABELS[k],
                         help="Neutral: durchgehend verfügbare Maschine. Werkstatt/Logistik: dieselben Aufträge, Maschine nur innerhalb fester Schichten verfügbar.")
     if vehicle == "logistik":
+        seed_widget("shift_length_slider")
         shift_length = st.slider("Schichtlänge (Minuten)", *bounds("shift_length_slider"), key="shift_length_slider",
                                   help="Kurze Schichten bedeuten viele Lücken in der Maschinenverfügbarkeit.")
+        st.session_state[KEPT["shift_length_slider"]] = shift_length
     else:
-        shift_length = C.DEFAULT_SHIFT_LENGTH
+        shift_length = int(st.session_state.get(KEPT["shift_length_slider"], C.DEFAULT_SHIFT_LENGTH))
     seed = st.number_input("Zufalls-Seed der Instanz", *bounds("seed_input"), key="seed_input", step=1)
     st.button("🎲 Neue Instanz generieren", width="stretch", on_click=randomize_seed, help="Würfelt einen neuen Seed für Bearbeitungszeiten und Fälligkeiten.")
     chain_seed = st.number_input("Zufalls-Seed der Kette", *bounds("chain_seed_input"), key="chain_seed_input", step=1,
