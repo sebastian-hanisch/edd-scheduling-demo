@@ -20,6 +20,8 @@ class Settings:
     chain_seed: int = 0
     tf: float = C.DEFAULT_TF
     rdd: float = C.DEFAULT_RDD
+    vehicle: str = C.DEFAULT_VEHICLE
+    shift_length: int = C.DEFAULT_SHIFT_LENGTH
 
 
 @lru_cache(maxsize=512)
@@ -51,12 +53,29 @@ class Analysis:
 
 
 def analyse(settings, random_draws=20):
+    """Wertet EDD auf dem gewählten Vehikel aus - Neutral (Maschine durchgehend verfügbar) oder Werkstatt/
+    Logistik (Schichtgrenzen zählen mit). EDD selbst bleibt in beiden Fällen dieselbe Regel (sortiert nur nach
+    Fälligkeit, kennt keine Schichten) - nur die BEWERTUNG der Reihenfolgen (und damit auch der Vollaufzählung)
+    wechselt mit dem Vehikel, damit die Haupt-Kennzahlen ehrlich widerspiegeln, was auf dem gewählten Vehikel
+    tatsächlich passiert (statt nur in einer Zusatzbox)."""
     inst = instance(settings.n, settings.seed, settings.tf, settings.rdd)
-    edd = A.edd(inst.p, inst.d)
-    spt = A.evaluate_order(inst.p, inst.d, A.spt_order(inst.p))
+    p, d = inst.p, inst.d
+
+    if settings.vehicle == "logistik":
+        def ev(order):
+            return A.evaluate_order_with_shifts(p, d, settings.shift_length, order)
+
+        optimal = A.brute_force_optimal_with_shifts(p, d, settings.shift_length) if settings.n <= C.BRUTE_FORCE_MAX_N else None
+    else:
+        def ev(order):
+            return A.evaluate_order(p, d, order)
+
+        optimal = A.brute_force_optimal(p, d) if settings.n <= C.BRUTE_FORCE_MAX_N else None
+
+    edd = ev(A.edd_order(d))
+    spt = ev(A.spt_order(p))
     rng = np.random.default_rng(settings.chain_seed)
-    random_lmaxs = [A.evaluate_order(inst.p, inst.d, A.random_order(settings.n, rng)).lmax for _ in range(random_draws)]
-    optimal = A.brute_force_optimal(inst.p, inst.d) if settings.n <= C.BRUTE_FORCE_MAX_N else None
+    random_lmaxs = [ev(A.random_order(settings.n, rng)).lmax for _ in range(random_draws)]
     return Analysis(settings, inst, edd, spt, float(np.mean(random_lmaxs)), random_draws, optimal)
 
 

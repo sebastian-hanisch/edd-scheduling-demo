@@ -22,10 +22,12 @@ def _base(fig, height):
     return lock_axes(fig)
 
 
-def build_schedule(p, order, upto=None, color=EDD_COLOR):
+def build_schedule(p, order, completion, upto=None, color=EDD_COLOR):
+    """`completion`: die TATSÄCHLICHEN Fertigstellungszeiten (aus `evaluate_order`/`evaluate_order_with_shifts`) -
+    auf dem Werkstatt/Logistik-Vehikel enthalten sie Lücken durch Schichtgrenzen, sichtbar als Leerraum."""
     order = np.asarray(order)
     upto = len(order) if upto is None else upto
-    starts = np.concatenate([[0], np.cumsum(p[order])[:-1]])
+    starts = np.asarray(completion) - p[order]
     fig = go.Figure()
     for i in range(upto):
         j = order[i]

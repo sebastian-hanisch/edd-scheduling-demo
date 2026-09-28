@@ -6,6 +6,7 @@ from dataclasses import replace
 import numpy as np
 import pytest
 
+import edd_algorithm as A
 import edd_constants as C
 import edd_evaluation as ev
 import edd_scenario as S
@@ -66,6 +67,36 @@ def test_analysis_matches_the_optimum_for_small_n():
     a = ev.analyse(ev.Settings(n=6))
     assert a.optimal is not None
     assert a.edd_matches_optimum
+
+
+# --- Vehikel-Bewusstsein der Hauptanalyse (nicht nur einer Zusatzbox) -----------------------------------------------------------------------
+
+
+def test_analyse_on_the_logistik_vehicle_actually_uses_shift_aware_completion_times():
+    """Regressionsschutz für genau die Lücke, die der Nutzer gefunden hat: `analyse()` mit vehicle='logistik'
+    muss Schichtgrenzen TATSÄCHLICH in a.edd/a.spt/a.optimal einrechnen, nicht nur das neutrale Ergebnis
+    zurückgeben. Verglichen mit einer unabhängigen, direkten Berechnung über `evaluate_order_with_shifts`."""
+    settings = ev.Settings(n=8, seed=100000, vehicle="logistik", shift_length=120)
+    a = ev.analyse(settings)
+    inst = ev.instance(8, 100000)
+    independent_edd = A.evaluate_order_with_shifts(inst.p, inst.d, 120, a.edd.order)
+    assert a.edd.lmax == pytest.approx(independent_edd.lmax)
+    assert not np.array_equal(a.edd.completion, np.cumsum(inst.p[a.edd.order]))  # Schichtgrenzen verschieben die Fertigstellung
+
+
+def test_analyse_on_the_logistik_vehicle_can_show_edd_missing_the_optimum():
+    """Der zentrale, jetzt im Hauptfluss sichtbare Befund: auf dem Werkstatt-Vehikel kann EDD von der
+    (schicht-bewussten) Vollaufzählung abweichen - anders als auf dem neutralen Vehikel, wo das ein Bug wäre."""
+    settings = ev.Settings(n=6, seed=3, vehicle="logistik", shift_length=100)
+    a = ev.analyse(settings)
+    assert a.optimal is not None
+    assert a.edd.lmax >= a.optimal.lmax - 1e-6                  # Optimum ist per Definition mindestens so gut
+
+
+def test_analyse_on_the_neutral_vehicle_is_unaffected_by_logistik_only_settings():
+    a1 = ev.analyse(ev.Settings(n=10, seed=5, vehicle="neutral", shift_length=120))
+    a2 = ev.analyse(ev.Settings(n=10, seed=5, vehicle="neutral", shift_length=960))
+    assert a1.edd.lmax == pytest.approx(a2.edd.lmax)
 
 
 def test_analysis_is_deterministic_given_the_chain_seed():

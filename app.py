@@ -9,14 +9,9 @@ mit einer anderen Zielfunktion. Siehe README für die Einordnung in die Linie.
 Lauffähig mit: streamlit run app.py
 """
 
-from dataclasses import replace
-
-import numpy as np
 import streamlit as st
 
-import edd_algorithm as A
 import edd_constants as C
-import edd_scenario_logistik as SL
 from edd_evaluation import Settings, SWEEP_LABELS, analyse, instance, optimality_check, run_config, shift_gap, shift_gap_sweep, sweep, timing_sweep
 from edd_presets import apply_preset, bounds, init_session_state_defaults, load_permalink_settings, randomize_chain_seed, randomize_seed, sync_query_params
 from edd_visualization import build_completion_vs_due, build_schedule, build_shift_gap, build_sweep, build_timing
@@ -113,16 +108,12 @@ with st.sidebar:
 sync_query_params({"n_slider": int(n_jobs), "seed_input": int(seed), "chain_seed_input": int(chain_seed), "vehicle_radio": vehicle,
                     "shift_length_slider": int(shift_length)})
 
-settings = Settings(int(n_jobs), int(seed), int(chain_seed))
+settings = Settings(int(n_jobs), int(seed), int(chain_seed), vehicle=vehicle, shift_length=int(shift_length))
 with st.spinner("Rechne..."):
     a = _analysis(settings)
 inst = a.inst
 p, d = inst.p, inst.d
-data_key = (settings, vehicle, shift_length)
-
-if vehicle == "logistik":
-    edd_with_shift = A.evaluate_order_with_shifts(p, d, int(shift_length), a.edd.order)
-    opt_with_shift = A.brute_force_optimal_with_shifts(p, d, int(shift_length)) if n_jobs <= C.BRUTE_FORCE_MAX_N else None
+data_key = settings
 
 # --- EDD in Aktion ---------------------------------------------------------------------------------------------------------------------
 
@@ -147,7 +138,7 @@ with view_slot.container():
         st.bar_chart({"Bearbeitungszeit": p.tolist(), "Fälligkeit": d.tolist()})
     elif step == 2:
         st.markdown(f"**EDD-Reihenfolge nach {upto} von {n_jobs} Aufträgen**")
-        st.plotly_chart(build_schedule(p, a.edd.order, upto=upto), width="stretch", key=f"s2_sched_{upto}")
+        st.plotly_chart(build_schedule(p, a.edd.order, a.edd.completion, upto=upto), width="stretch", key=f"s2_sched_{upto}")
         st.caption(f"Größte Verspätung bisher: {_fmt_int(a.edd.lateness[:upto].max())}")
     else:
         st.markdown("**Fertigstellung gegen Fälligkeit in EDD-Reihenfolge**")
@@ -156,7 +147,8 @@ with view_slot.container():
 if step == 1:
     st.caption(f"Bearbeitungszeiten zwischen {int(p.min())} und {int(p.max())}, Fälligkeiten zwischen {int(d.min())} und {int(d.max())} Minuten (Seed {seed}).")
 elif step == 2:
-    st.caption("Jeder Balken ist ein Auftrag; die Reihenfolge folgt der Fälligkeit, nicht der Bearbeitungszeit.")
+    gap_note = " Lücken zwischen Balken sind Wartezeit an einer Schichtgrenze." if vehicle == "logistik" else ""
+    st.caption(f"Jeder Balken ist ein Auftrag; die Reihenfolge folgt der Fälligkeit, nicht der Bearbeitungszeit.{gap_note}")
 else:
     st.caption(f"EDD: größte Verspätung {_fmt_int(a.edd.lmax)} Minuten. SPT (falsche Regel für dieses Ziel): {_fmt_int(a.spt.lmax)} Minuten.")
 
@@ -165,36 +157,27 @@ st.markdown("---")
 # --- Ergebnis -------------------------------------------------------------------------------------------------------------------------
 
 st.markdown("## 🎯 Was die Sortierung bringt")
-st.caption("**Abstand:** Differenz der maximalen Verspätung (Lmax) einer Reihenfolge gegenüber EDD, in Minuten. EDD selbst ist deterministisch - nur die Zufalls-Vergleichsreihenfolge streut.")
+vehicle_note = " Auf dem Werkstatt/Logistik-Vehikel zählen Lücken an Schichtgrenzen mit - EDD kennt sie nicht, alle Zahlen hier berücksichtigen sie trotzdem." if vehicle == "logistik" else ""
+st.caption(f"**Abstand:** Differenz der maximalen Verspätung (Lmax) einer Reihenfolge gegenüber EDD, in Minuten. EDD selbst ist deterministisch - nur die Zufalls-Vergleichsreihenfolge streut.{vehicle_note}")
 m1, m2, m3, m4 = st.columns(4)
-m1.metric("EDD (größte Verspätung)", f"{_fmt_int(a.edd.lmax)} min", help="Die Zielgröße: größte Verspätung in EDD-Reihenfolge (negativ heißt: alle Aufträge fertig vor ihrer Frist).")
+m1.metric("EDD (größte Verspätung)", f"{_fmt_int(a.edd.lmax)} min", help="Die Zielgröße: größte Verspätung in EDD-Reihenfolge, auf dem gewählten Vehikel (negativ heißt: alle Aufträge fertig vor ihrer Frist).")
 m2.metric("SPT (falsche Regel hier)", f"+{_fmt_int(a.gap_spt)} min", delta_color="off", help="SPT optimiert ΣCⱼ, nicht Lmax - hier zum Vergleich, nicht als Konkurrenz.")
 m3.metric(f"Zufällige Reihenfolge (Mittel über {a.random_runs})", f"+{_fmt_int(a.gap_random)} min", delta_color="off", help="Mittel über mehrere zufällige Reihenfolgen derselben Instanz.")
 if a.optimal is not None:
     m4.metric("Vollaufzählung (Gegenprobe)", "trifft EDD exakt" if a.edd_matches_optimum else "WEICHT AB", delta_color="off",
-              help=f"Alle {n_jobs}! Reihenfolgen durchprobiert - unabhängige Bestätigung, dass EDD wirklich das Minimum von Lmax trifft.")
+              help=f"Alle {n_jobs}! Reihenfolgen durchprobiert (auf dem gewählten Vehikel) - unabhängige Bestätigung bzw. Gegenprobe.")
 else:
     m4.metric("Vollaufzählung", f"erst ab n ≤ {C.BRUTE_FORCE_MAX_N}", delta_color="off")
 
 if a.optimal is not None and not a.edd_matches_optimum:
-    st.error("⚠️ EDD weicht von der Vollaufzählung ab - das wäre ein Fehler im Beweis oder in der Implementierung, bitte melden.")
-else:
-    st.success(f"✅ EDD hält die größte Verspätung {_fmt_int(a.gap_spt)} Minuten kleiner als SPT und {_fmt_int(a.gap_random)} Minuten kleiner als eine zufällige Reihenfolge - bei dieser Zielfunktion beweisbar die beste überhaupt.")
-
-if vehicle == "logistik":
-    st.markdown("**Auf dem Werkstatt/Logistik-Vehikel** (Schichtgrenzen berücksichtigt):")
-    lm1, lm2 = st.columns(2)
-    lm1.metric("EDD, Schichten mitgerechnet", f"{_fmt_int(edd_with_shift.lmax)} min", help="Dieselbe EDD-Reihenfolge wie oben, aber die Fertigstellungszeiten berücksichtigen jetzt Lücken an Schichtgrenzen.")
-    if opt_with_shift is not None:
-        gap = edd_with_shift.lmax - opt_with_shift.lmax
-        lm2.metric("Echtes Optimum MIT Schichten", f"{_fmt_int(opt_with_shift.lmax)} min", delta=f"EDD ist {gap:.0f} min darüber", delta_color="off",
-                   help="Vollaufzählung, die die Schichtgrenzen selbst mit optimiert - nur für kleine n möglich.")
-        if gap > 0.5:
-            st.warning(f"⚠️ EDD ist hier NICHT mehr optimal: {gap:.0f} Minuten über dem echten Optimum. Der Beweis oben setzt eine durchgehend verfügbare Maschine voraus - siehe 🚧 unten.")
-        else:
-            st.info("ℹ️ Bei dieser Instanz liegt EDD trotz Schichten exakt am Optimum - das ist nicht garantiert, siehe die Messreihe unten.")
+    if vehicle == "neutral":
+        st.error("⚠️ EDD weicht von der Vollaufzählung ab - das wäre ein Fehler im Beweis oder in der Implementierung, bitte melden.")
     else:
-        lm2.metric("Echtes Optimum MIT Schichten", f"erst ab n ≤ {C.BRUTE_FORCE_MAX_N}", delta_color="off")
+        gap = a.edd.lmax - a.optimal.lmax
+        st.warning(f"⚠️ EDD ist hier NICHT mehr optimal: {gap:.0f} Minuten über dem echten Optimum MIT Schichten. Der Beweis oben setzt eine durchgehend verfügbare Maschine voraus - siehe 🚧 unten.")
+else:
+    tail = " (auch mit Schichten - bei dieser Instanz trifft EDD trotzdem das Optimum, das ist nicht garantiert)" if vehicle == "logistik" and a.optimal is not None else ""
+    st.success(f"✅ EDD hält die größte Verspätung {_fmt_int(a.gap_spt)} Minuten kleiner als SPT und {_fmt_int(a.gap_random)} Minuten kleiner als eine zufällige Reihenfolge - bei dieser Zielfunktion beweisbar die beste überhaupt{tail}.")
 
 st.markdown("---")
 
