@@ -179,6 +179,8 @@ if a.optimal is not None and not a.edd_matches_optimum:
         st.warning(f"⚠️ EDD ist hier NICHT mehr optimal: {gap:.0f} Minuten über dem echten Optimum MIT Schichten. Der Beweis oben setzt eine durchgehend verfügbare Maschine voraus - siehe 🚧 unten.")
 else:
     tail = " (auch mit Schichten - bei dieser Instanz trifft EDD trotzdem das Optimum, das ist nicht garantiert)" if vehicle == "logistik" and a.optimal is not None else ""
+    if vehicle == "logistik" and a.optimal is None:
+        tail = f" (ohne Schichten; mit Schichten ist EDD nicht garantiert optimal - die Vollaufzählung prüft das nur bis n ≤ {C.BRUTE_FORCE_MAX_N})"
     st.success(f"✅ EDD hält die größte Verspätung {_fmt_int(a.gap_spt)} Minuten kleiner als SPT und {_fmt_int(a.gap_random)} Minuten kleiner als eine zufällige Reihenfolge - bei dieser Zielfunktion beweisbar die beste überhaupt{tail}.")
 
 st.markdown("---")
@@ -261,8 +263,9 @@ Auftrag vor seiner Frist fertig ist). Gesucht: $\pi$, das $L_{\max} = \max_j L_j
 **Beweis (Vertauschungsargument).** Seien $i$ vor $j$ benachbart mit $d_i > d_j$. Vertauscht man sie, ändert sich
 nur die Fertigstellungszeit der beiden - alle anderen Aufträge bleiben unberührt, weil die Summe der
 Bearbeitungszeiten davor gleich bleibt. Nach der Vertauschung ist die Fertigstellungszeit des SPÄTER
-fertigwerdenden Auftrags (jetzt $i$) unverändert gegenüber vorher (wo $j$ als zweiter fertig wurde) - $j$s neue
-Verspätung ist höchstens so groß wie $i$s alte, weil $d_j < d_i$. Die maximale Verspätung der beiden kann durch
+fertigwerdenden Auftrags (jetzt $i$) unverändert gegenüber vorher (wo $j$ als zweiter fertig wurde) - $i$s neue
+Verspätung ist kleiner als $j$s alte, weil $d_i > d_j$, und $j$ wird jetzt früher fertig als zuvor, seine Verspätung
+steigt also nicht. Die maximale Verspätung der beiden kann durch
 die Vertauschung also nicht steigen. Jede nicht EDD-sortierte Reihenfolge lässt sich damit ohne Verschlechterung
 in Richtung EDD umsortieren; EDD ist ein Optimum.
 
@@ -285,6 +288,6 @@ Implementiert in `edd_algorithm.py` (EDD, Brute-Force-Gegenprobe, Schicht-Varian
 st.markdown("---")
 st.caption(
     "Diese Demo ist Teil des Portfolios von [Sebastian Hanisch](https://sebastianhanisch.net) – "
-    "Operations Research und Machine Learning. Interesse an einer maßgeschneiderten Lösung für "
-    "Ihr Unternehmen? [Kontakt aufnehmen](https://sebastianhanisch.net/kontakt.html)"
+    "Operations Research und Machine Learning ([Über mich](https://sebastianhanisch.net/ueber-mich.html)). "
+    "Mehr zur Reihe: [Scheduling-Theorie: SPT bis RCPSP](https://sebastianhanisch.net/konzepte-klassische-scheduling-theorie.html)."
 )
